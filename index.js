@@ -15,6 +15,7 @@ const PORT = 5000;
 const app = express();
 
 const [inQueue, sent, error] = ['в очереди', 'отправлено', 'ошибка при отправке'];
+const [once, daily, custom] = ['единажды', 'каждый день', 'настраиваемое'];
 
 app.use(bodyParser.urlencoded({extended: false}));
 app.use(bodyParser.json());
@@ -28,13 +29,15 @@ app.post('/notification', async (request, response) => {
     const {title, text, recipient} = request.body;
     let {second, minute, hour, dayOfMonth, month, dayOfWeek} = request.query;
     let date = new Date();
+    let newNotification;
     if (dayOfMonth === '*' && month === '*') {
         dayOfMonth = date.getDate();
-        month = date.getDay();
+        month = date.getMonth() + 1;
     }
     let timeSend = `2021-${month}-${dayOfMonth} ${hour}:${minute}:${second}`;
-    let newNotification = await pool.query(`INSERT INTO notification (title, text, recipient, status, time_send) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    newNotification = await pool.query(`INSERT INTO notification (title, text, recipient, status, time_send) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
         [title, text, recipient, inQueue, timeSend]);
+
     let transporter = nodemailer.createTransport({
         host: "smtp.ethereal.email",
         port: 587,
@@ -51,12 +54,19 @@ app.post('/notification', async (request, response) => {
         text: `${text}`
     };
 
-    // num num num num num *    - для одноразовой отправки
     // num num num *  *  *    - для ежедневной отправки
+    // num num num num num *    - для одноразовой отправки
     // num num num num num num  - настроиваемое, возможность задавать в какие дни и время отправить уведомление
     cron.schedule(`${second} ${minute} ${hour} ${dayOfMonth} ${month} ${dayOfWeek}`, async function () {
         let info = await transporter.sendMail(msg);
         newNotification = await pool.query(`UPDATE notification SET status = $1 WHERE time_send = $2`, [sent, timeSend]);
+        if (request.query.month === '*' && request.query.dayOfWeek === '*') {
+            newNotification = await pool.query(`UPDATE notification SET type_send = $1 WHERE time_send = $2`, [daily, timeSend]);
+        } else if (request.query.month !== '*' && request.query.dayOfWeek === '*') {
+            newNotification = await pool.query(`UPDATE notification SET type_send = $1 WHERE time_send = $2`, [once, timeSend]);
+        } else if (request.query.month !== '*' && request.query.dayOfWeek !== '*') {
+            newNotification = await pool.query(`UPDATE notification SET type_send = $1 WHERE time_send = $2`, [custom, timeSend]);
+        }
         console.log(`Message ${msg.subject} отправлено!`);
     });
 

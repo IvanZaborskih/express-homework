@@ -6,5 +6,6 @@ CREATE TABLE notification (
     status CHARACTER VARYING(30),
     date_of_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    time_send TIMESTAMP
+    time_send TIMESTAMP,
+    type_send TEXT
 );
